@@ -1,5 +1,0 @@
-<launch>
-    <node name="scan_values_handler" pkg="JacquelineZhou_PA4" type="scan_values_handler.py" output="log"/>
-    <node name="driver" pkg="JacquelineZhou_PA4" type="driver.py" output="screen"/>
-    <node name="pid" pkg="JacquelineZhou_PA4" type="pid.py" output="screen"/>
-</launch>

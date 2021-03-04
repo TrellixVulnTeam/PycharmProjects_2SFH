@@ -6,7 +6,7 @@ import rospy
 from geometry_msgs.msg import Twist
 from std_msgs.msg import Int16, Float32
 from math import pi
-from JacquelineZhou_PA4.msg import Filtered_Laserscan
+from jacqueline_pa4.msg import Filtered_Laserscan
 
 # scan_values_handler subscriber callback
 def sub_svh_cb(msg):

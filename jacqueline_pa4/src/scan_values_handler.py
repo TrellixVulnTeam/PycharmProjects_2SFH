@@ -8,7 +8,7 @@ from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Int16, Float32
 # from constants import *
 from state_definitions import *
-from JacquelineZhou_PA4.msg import Filtered_Laserscan
+from jacqueline_pa4.msg import Filtered_Laserscan
 
 # Process all the data from the LIDAR
 def cb(msg):
