@@ -44,10 +44,6 @@ sub_pid_twist = rospy.Subscriber('pid_twist', Twist, cb_twist)
 r = 10
 rate = rospy.Rate(r)
 
-# threshold for approaching found wall
-err = 0.5
-threshold_1 = 1 + err
-
 # Linear speed of the robot
 LINEAR_SPEED = 0.3
 # Angular speed of the robot

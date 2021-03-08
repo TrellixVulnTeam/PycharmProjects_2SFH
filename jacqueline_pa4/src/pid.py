@@ -81,6 +81,7 @@ TURN = 3
 # following state
 WANDER = 4
 
+# starting state
 state = 0
 
 # Linear speed of the robot
@@ -90,11 +91,11 @@ ANGULAR_SPEED = pi/6
 
 # Multipliers used to tune the PID controller
 # Proportional constant
-P_CONSTANT = 0.5
+P_CONSTANT = 0.8
 # Integral constant
 I_CONSTANT = 0.01
 # Derivative constant
-D_CONSTANT = 0.3
+D_CONSTANT = 0.2
 #------------------------------------------------------------------------------------------
 #=====================================## while loop ##=====================================
 #------------------------------------------------------------------------------------------
@@ -105,7 +106,7 @@ while not rospy.is_shutdown():
     if state == LEFT:
         # use pid
         pid = calc_pid()
-        t.angular.z = ANGULAR_SPEED * pid * (-1)
+        t.angular.z = ANGULAR_SPEED * pid
         t.linear.x = LINEAR_SPEED
     elif state == RIGHT:
         # use pid

@@ -6,9 +6,11 @@
 
 #for each of your states.
 
-# wandering state
-WANDERING = 1
-# found a wall state
-FOUND_WALL = 2
+# following left wall
+LEFT = 1
+# following right wall
+RIGHT = 2
+# turning
+TURN = 3
 # following state
-FOLLOWING = 3
+WANDER = 4

@@ -14,6 +14,7 @@ from prrexamples.msg import Filtered_Laserscan
 #------------------------------------------------------------------------------------------
 # Process all the data from the LIDAR
 def cb(msg):
+    global state
     # calculate msg to publish to pid
     msg_pid = calc_laserscan(msg)
     # publish msg_pid
@@ -52,7 +53,7 @@ def calc_regions(ranges):
     global region_check
     # make things easier by creating a bool dict
     region_check = {
-        "N":     min(North) < detect_dist - 1.7,            # north
+        "N":     min(North) < detect_dist - 2.4,            # north
         "NW":    min(ranges[30:60]) < detect_dist,          # north-west
         "W":     min(ranges[60:120]) < detect_dist,         # west
         "SW":    min(ranges[120:150]) < detect_dist,        # south-west
@@ -64,9 +65,12 @@ def calc_regions(ranges):
 
 # define state by ranges
 def state_define(region_check):
-    if region_check["W"] and regions["W"] >= regions["E"] and not region_check["N"]:
+    # wall on the left
+    #if region_check["W"] and regions["W"] >= regions["E"] and not region_check["N"]:
+    if region_check["W"] and not region_check["N"]:
         return LEFT
-    elif region_check["E"] and regions["E"] >= regions["W"] and not region_check["N"]:
+    #elif region_check["E"] and regions["E"] >= regions["W"] and not region_check["N"]:
+    elif region_check["E"] and not region_check["N"]:
         return RIGHT
     elif region_check["N"]:
         return TURN
@@ -104,6 +108,9 @@ err = 0.5
 detect_dist = 3.5
 cross_error = 0
 
+# starting state
+state = 0
+
 # regions
 regions = {}
 region_check = {}
@@ -111,7 +118,7 @@ region_check = {}
 #=====================================## while loop ##=====================================
 #------------------------------------------------------------------------------------------
 # buffer loop
-while regions == {} or region_check == {}: continue
+while state == 0 or regions == {} or region_check == {}: continue
 
 # Keep the node running
 while not rospy.is_shutdown():
