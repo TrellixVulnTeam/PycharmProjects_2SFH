@@ -4,90 +4,77 @@
 
 
 import rospy
+import numpy as np
+#from state_definitionsn import *
 from sensor_msgs.msg import LaserScan
 from std_msgs.msg import Int16, Float32
-# from constants import *
-from state_definitions import *
-from jacqueline_pa4.msg import Filtered_Laserscan
-
+from prrexamples.msg import Filtered_Laserscan
+#------------------------------------------------------------------------------------------
+#==============================## functions and callbacks ##==============================
+#------------------------------------------------------------------------------------------
 # Process all the data from the LIDAR
 def cb(msg):
-    # define the state by processed ranges info
-    global ranges
-    ranges = np.array(msg.ranges)
-    for i in range(len(ranges)):
-        if ranges[i] <= 0 or ranges[i] > 4:
-            ranges[i] = smooth_value(ranges, i)
-    s = state_define(ranges)
-    # publish state
-    pub_state.publish(s)
     # calculate msg to publish to pid
-    msg = calc_cross_err(ranges)
-    # publish msg
-    pub_svh.publish(msg)
+    msg_pid = calc_laserscan(msg)
+    # publish msg_pid
+    pub_svh.publish(msg_pid)
+    # define the state by processed ranges info
+    state = state_define(region_check)
+    # publish state
+    pub_state.publish(state)
 
+# calculate and compile Filtered_Laserscan object
+def calc_laserscan(msg):
+    ranges = np.array(msg.ranges)
+    for i in range(360):
+        if ranges[i] == float('inf') or ranges[i] < msg.range_min:
+            ranges[i] = 4
+    calc_regions(ranges)
+    msg_new = Filtered_Laserscan()
+    msg_new.filtered_ranges = ranges
+    return msg_new
 
-# smooth unusable laserscan data by average of 10 data around it
-def smooth_value(ranges, i):
-    sum = 0
-    count = 0
-    for j in range(i-5, i+5):
-        if ranges[j] < 0.1 or ranges[j] > 4:
-            sum += ranges[j]
-            count += 1
-    return sum / count
+# define regions
+def calc_regions(ranges):
+    global regions
+    # calculate different region min
+    North = np.append(ranges[0:30], ranges[330:360])
+    regions = {
+        "N":     min(North),                                # north
+        "NW":    min(ranges[30:60]),                        # north-west
+        "W":     min(ranges[60:120]),                       # west
+        "SW":    min(ranges[120:150]),                      # south-west
+        "S":     min(ranges[150:210]),                      # south
+        "SE":    min(ranges[210:240]),                      # south-east
+        "E":     min(ranges[240:300]),                      # east
+        "NE":    min(ranges[300:330]),                      # north-east
+    }
+    global region_check
+    # make things easier by creating a bool dict
+    region_check = {
+        "N":     min(North) < detect_dist - 1.7,            # north
+        "NW":    min(ranges[30:60]) < detect_dist,          # north-west
+        "W":     min(ranges[60:120]) < detect_dist,         # west
+        "SW":    min(ranges[120:150]) < detect_dist,        # south-west
+        "S":     min(ranges[150:210]) < detect_dist,        # south
+        "SE":    min(ranges[210:240]) < detect_dist,        # south-east
+        "E":     min(ranges[240:300]) < detect_dist,        # east
+        "NE":    min(ranges[300:330]) < detect_dist,        # north-east
+    }
 
-# calculate dist from wall and combine info into a message
-def calc_cross_err(ranges):
-    msg = Filtered_Laserscan()
-    msg.filtered_ranges = ranges
-    msg.LEFT = LEFT
-    msg.RIGHT = RIGHT
-    if msg.LEFT:
-        msg.dist_from_wall_L = min(ranges[0:180])
+# define state by ranges
+def state_define(region_check):
+    if region_check["W"] and regions["W"] >= regions["E"] and not region_check["N"]:
+        return LEFT
+    elif region_check["E"] and regions["E"] >= regions["W"] and not region_check["N"]:
+        return RIGHT
+    elif region_check["N"]:
+        return TURN
     else:
-        msg.dist_from_wall_L = 4
-    if msg.RIGHT:
-        msg.dist_from_wall_R = min(ranges[180:360])
-    else:
-        msg.dist_from_wall_R = 4
-    return msg
-
-# define the state by laserscan data
-def state_define(ranges):
-    global LEFT
-    global RIGHT
-    # following state
-    if mean(ranges[80:100]) <= 1 + err or mean(ranges[260:280]) <= 1 + err:
-        LEFT = True
-        RIGHT = True
-        return FOLLOWING
-    elif mean(ranges[80:100]) <= 1 + err:
-        LEFT = True
-        RIGHT = False
-        return FOLLOWING
-    elif mean(ranges[260:280]) <= 1 + err:
-        LEFT = False
-        RIGHT = True
-        return FOLLOWING
-    # found a wall state
-    elif min(ranges[0:180]) < 4 and min(ranges[0:180]) > 1 + err and min(ranges[180:360]) >= min(ranges[0:180]):
-        LEFT = True
-        RIGHT = False
-        return FOUND_WALL
-    elif min(ranges[180:360]) < 4 and min(ranges[180:360]) > 1 + err and min(ranges[0:180]) >= min(ranges[180:360]):
-        LEFT = False
-        RIGHT = True
-        return FOUND_WALL
-    # wandering state
-    elif min(ranges) > 4:
-        LEFT = False
-        RIGHT = False
-        return WANDERING
-    else:
-        return ""
-
-
+        return WANDER
+#------------------------------------------------------------------------------------------
+#===========================## init node and define variables ##===========================
+#------------------------------------------------------------------------------------------
 # Init node
 rospy.init_node('scan_values_handler')
 
@@ -96,7 +83,6 @@ sub = rospy.Subscriber('scan', LaserScan, cb)
 
 # Publishers
 pub_state = rospy.Publisher('state', Int16, queue_size = 1)
-#THINK OF WHAT INFO TO PUBLISH TO THE PID
 pub_svh = rospy.Publisher('cross_err', Filtered_Laserscan, queue_size = 1)
 
 # Rate object
@@ -104,15 +90,28 @@ rate = rospy.Rate(10)
 
 ranges = []
 
+# following left wall
+LEFT = 1
+# following right wall
+RIGHT = 2
+# turning
+TURN = 3
+# following state
+WANDER = 4
+
 # initialize error objects
 err = 0.5
+detect_dist = 3.5
 cross_error = 0
-# if the robot is going to follow the wall on left side
-LEFT = False
-RIGHT = False
 
+# regions
+regions = {}
+region_check = {}
+#------------------------------------------------------------------------------------------
+#=====================================## while loop ##=====================================
+#------------------------------------------------------------------------------------------
 # buffer loop
-while ranges == []: continue
+while regions == {} or region_check == {}: continue
 
 # Keep the node running
 while not rospy.is_shutdown():

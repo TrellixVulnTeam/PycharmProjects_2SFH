@@ -1,5 +1,1 @@
 float32[] filtered_ranges
-float32 dist_from_wall_L
-float32 dist_from_wall_R
-bool LEFT
-bool RIGHT

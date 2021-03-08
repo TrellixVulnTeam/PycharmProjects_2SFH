@@ -5,54 +5,53 @@
 import rospy
 from geometry_msgs.msg import Twist
 from std_msgs.msg import Int16, Float32
-from math import pi
-from jacqueline_pa4.msg import Filtered_Laserscan
+from math import pi, sqrt
+from prrexamples.msg import Filtered_Laserscan
+#------------------------------------------------------------------------------------------
+#==============================## functions and callbacks ##==============================
+#------------------------------------------------------------------------------------------
+#Makes the state message global
+def cb_state(msg):
+    global state
+    state = msg.data
 
 # scan_values_handler subscriber callback
 def sub_svh_cb(msg):
     global filtered_laserscan
     filtered_laserscan = msg
-    calc_pid()
 
 # calculate errors and pid components
 def calc_pid():
-    global err_prev_L
-    global err_prev_R
-    global err_curr_L
-    global err_curr_R
-    global err_sum_L
-    global err_sum_R
-    global pid_sum_L
-    global pid_sum_R
-    if filtered_laserscan.LEFT:
-        err_L = EXP_DIST - filtered_laserscan.dist_from_wall_L
-        err_prev_L = err_curr_L
-        err_curr_L = err_L
-        err_sum_L += err_curr_L * dT
-        pid_sum_L = get_pid(err_curr_L, err_prev_L, err_sum_L)
-    if filtered_laserscan.RIGHT:
-        err_R = EXP_DIST - filtered_laserscan.dist_from_wall_R
-        err_prev_R = err_curr_R
-        err_curr_R = err_R
-        err_sum_L += err_curr_L * dT
-        pid_sum_R = get_pid(err_curr_R, err_prev_R, err_sum_R)
+    global curr_error
+    global prev_error
+    global sum_error
+    global pid
+    error = min(filtered_laserscan.filtered_ranges) - EXP_DIST
+    prev_error = curr_error
+    curr_error = error
+    sum_error += curr_error * dT
+    pid = get_pid(curr_error, prev_error, sum_error)
+    return pid
 
+# calculate pid value
 def get_pid(curr, prev, sum):
     p_component = curr
     d_component = (curr - prev)/dT
-    i_component = sum 
+    i_component = sum
     return P_CONSTANT * p_component + D_CONSTANT * d_component + I_CONSTANT * i_component
-
-#CALLBACKS FOR ANYTHING YOUR PID NEEDS TO SUBSCRIBE TO FROM scan_values_handler
-
+#------------------------------------------------------------------------------------------
+#===========================## init node and define variables ##===========================
+#------------------------------------------------------------------------------------------
 # Init node
 rospy.init_node('pid')
 
 # Create publisher for suggested twist objects
 pub = rospy.Publisher('pid_twist', Twist, queue_size = 1)
 
-#SUBSCRIBERS FOR THINGS FROM scan_values_handler YOU MIGHT WANT
+# subscribe to scan_values_handler 
 sub_svh = rospy.Subscriber('cross_err', Filtered_Laserscan, sub_svh_cb)
+# subscribe to state
+sub_state = rospy.Subscriber('state', Int16, cb_state)
 
 # initialize Filtered_Laserscan object
 filtered_laserscan = Filtered_Laserscan()
@@ -67,13 +66,22 @@ err = 0.5
 
 # initialize variables for pid calculation
 EXP_DIST = 1.0
-err_sum_L = 0.0
-err_sum_R = 0.0
-err_prev_L = 0.0
-err_prev_R = 0.0
-err_curr_L = 0.0
-err_curr_R = 0.0
-dT = 1 / r
+dT = 1.0 / r
+curr_error = 0.0
+prev_error = 0.0
+sum_error = 0.0
+pid = 0.0
+
+# following left wall
+LEFT = 1
+# following right wall
+RIGHT = 2
+# turning
+TURN = 3
+# following state
+WANDER = 4
+
+state = 0
 
 # Linear speed of the robot
 LINEAR_SPEED = 0.3
@@ -84,44 +92,39 @@ ANGULAR_SPEED = pi/6
 # Proportional constant
 P_CONSTANT = 0.5
 # Integral constant
-I_CONSTANT = 0.3
+I_CONSTANT = 0.01
 # Derivative constant
-D_CONSTANT = 0.1
-# pid
-pid_sum_L = 0.0
-pid_sum_R = 0.0
-
+D_CONSTANT = 0.3
+#------------------------------------------------------------------------------------------
+#=====================================## while loop ##=====================================
+#------------------------------------------------------------------------------------------
 # buffer loop
 while filtered_laserscan == Filtered_Laserscan(): continue
 
 while not rospy.is_shutdown():
-    #angular velocity
-    if filtered_laserscan.LEFT and not filtered_laserscan.RIGHT:
-        # found/following wall on the right
-        t.angular.z = ANGULAR_SPEED * pid_sum_L
+    if state == LEFT:
+        # use pid
+        pid = calc_pid()
+        t.angular.z = ANGULAR_SPEED * pid * (-1)
         t.linear.x = LINEAR_SPEED
-    elif filtered_laserscan.RIGHT and not filtered_laserscan.LEFT:
-        # found/following wall on the left
-        t.angular.z = ANGULAR_SPEED * pid_sum_R
+    elif state == RIGHT:
+        # use pid
+        pid = calc_pid()
+        t.angular.z = ANGULAR_SPEED * pid
         t.linear.x = LINEAR_SPEED
-    elif filtered_laserscan.LEFT and filtered_laserscan.RIGHT:
-        #fonud two walls
-        if filtered_laserscan.dist_from_wall_L > 1 + err and filtered_laserscan.dist_from_wall_R >= filtered_laserscan.dist_from_wall_L:
-            # there is more space on the right, follow the right wall
-            t.angular.z = ANGULAR_SPEED * pid_sum_R
-            t.linear.x = LINEAR_SPEED
-        elif filtered_laserscan.dist_from_wall_R > 1 + err and filtered_laserscan.dist_from_wall_L >= filtered_laserscan.dist_from_wall_R:
-            # there is more space on the left, follow the left wall
-            t.angular.z = ANGULAR_SPEED * pid_sum_L
-            t.linear.x = LINEAR_SPEED
+    elif state == TURN:
+        if min(filtered_laserscan.filtered_ranges[0:100]) < min(filtered_laserscan.filtered_ranges[260:360]):
+            # turn right
+            t.angular.z = ANGULAR_SPEED * (-1)
+            t.linear.x = LINEAR_SPEED*0.6
         else:
-            # no space for two walls, stop the robot
-            t.angular.z = 0
-            t.linear.x = 0
-    else:
-        # no wall found (driver handles this situation)
+            # turn left
             t.angular.z = ANGULAR_SPEED
-            t.linear.x = LINEAR_SPEED
+            t.linear.x = LINEAR_SPEED*0.6
+    elif state == WANDER:
+        # whatever, handled by driver.py
+        t.angular.z = 0
+        t.linear.x = LINEAR_SPEED
     #Publish the twist to the driver
     pub.publish(t)
     rate.sleep() 
